@@ -54,6 +54,7 @@ type GroupState = {
   jid?: string;
   name?: string;
   participants?: Participant[];
+  participantNames?: Record<string, string>;
   messages: StoredMessage[];
   lastSync?: string;
   error?: string;
@@ -244,6 +245,10 @@ const start = async () => {
       const text = extractText(m.message).trim();
       if (!text) continue;
       const participant = m.key.participant ?? m.key.remoteJid ?? "";
+      if (m.pushName && participant) {
+        gs.participantNames = gs.participantNames ?? {};
+        gs.participantNames[participant] = m.pushName;
+      }
       gs.messages.push({
         id: m.key.id ?? String(Date.now()),
         from: participant,

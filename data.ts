@@ -15,6 +15,7 @@ type WAGroupState = {
   jid?: string;
   name?: string;
   participants?: WAParticipant[];
+  participantNames?: Record<string, string>;
   messages: WAStoredMessage[];
   lastSync?: string;
   error?: string;
@@ -369,11 +370,29 @@ export async function getLPC() {
   const summary = await loadLPCSummary();
 
   const participants = g.participants ?? [];
-  const members = participants.map((p) => ({
-    name: p.name || p.jid.split("@")[0],
-    jid: p.jid,
-    role: p.admin === "superadmin" ? "Owner" : p.admin === "admin" ? "Admin" : "Member",
-  }));
+  const nameMap = g.participantNames ?? {};
+  // Backfill names from any messages we have (in case daemon hasn't written them)
+  for (const m of g.messages ?? []) {
+    if (m.name && m.from && !nameMap[m.from]) nameMap[m.from] = m.name;
+  }
+  const members = participants
+    .map((p) => {
+      const realName = nameMap[p.jid] || p.name;
+      const shortId = p.jid.split("@")[0].slice(-6);
+      return {
+        name: realName || `#${shortId}`,
+        jid: p.jid,
+        role: p.admin === "superadmin" ? "Owner" : p.admin === "admin" ? "Admin" : "Member",
+        hasRealName: !!realName,
+      };
+    })
+    .sort((a, b) => {
+      // Known names first, then admins, then rest
+      if (a.hasRealName !== b.hasRealName) return a.hasRealName ? -1 : 1;
+      const rank = (r: string) => (r === "Owner" ? 0 : r === "Admin" ? 1 : 2);
+      return rank(a.role) - rank(b.role);
+    })
+    .map(({ hasRealName, ...rest }) => rest);
 
   const messages = (g.messages ?? []).slice(-100);
 
