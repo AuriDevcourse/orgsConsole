@@ -4,6 +4,55 @@ const $$ = (s) => document.querySelectorAll(s);
 const fmt = (n) => new Intl.NumberFormat("en-US").format(n);
 const esc = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
+// --- lucide icons (only the ones we use) ---
+const ICONS = {
+  "key":           `<path d="M15 7a4 4 0 1 1 4 4m0 0-9 9H6v-4l9-9"/>`,
+  "external-link": `<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>`,
+  "shield-check":  `<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/>`,
+  "refresh":       `<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>`,
+  "megaphone":     `<path d="M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1Z"/><path d="M15 8a5 5 0 0 1 0 8"/><path d="M18 5a9 9 0 0 1 0 14"/>`,
+  "send":          `<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>`,
+  "mail-plus":     `<path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h9"/><path d="m22 7-10 5L2 7"/><path d="M19 16v6"/><path d="M16 19h6"/>`,
+  "check":         `<path d="m5 12 5 5L20 7"/>`,
+  "alert":         `<circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>`,
+};
+function iconSvg(name) {
+  const body = ICONS[name];
+  if (!body) return "";
+  return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+}
+function renderIcons(root = document) {
+  root.querySelectorAll("[data-icon]").forEach((el) => {
+    if (el.querySelector(".icon")) return;
+    const name = el.getAttribute("data-icon");
+    el.insertAdjacentHTML("afterbegin", iconSvg(name));
+  });
+}
+
+// --- toast ---
+function toast({ title, sub, kind = "ok", icon, ttl = 4200 }) {
+  const stack = $("#toast-stack");
+  if (!stack) return;
+  const el = document.createElement("div");
+  el.className = `toast toast-${kind}`;
+  const iconName = icon || (kind === "err" ? "alert" : kind === "warn" ? "alert" : "check");
+  el.innerHTML = `
+    ${iconSvg(iconName)}
+    <div class="toast-body">
+      <div class="toast-title">${esc(title)}</div>
+      ${sub ? `<div class="toast-sub">${esc(sub)}</div>` : ""}
+    </div>
+    <button class="toast-close" aria-label="Dismiss">×</button>
+  `;
+  const kill = () => {
+    el.classList.add("leaving");
+    setTimeout(() => el.remove(), 180);
+  };
+  el.querySelector(".toast-close").onclick = kill;
+  stack.appendChild(el);
+  if (ttl > 0) setTimeout(kill, ttl);
+}
+
 function wrapCollapsible(el, limit = 5) {
   if (!el) return;
   const prev = el.parentNode && el.parentNode.querySelector(":scope > .show-more");
@@ -67,9 +116,15 @@ async function loadLYS() {
   $("#lys-events").textContent = fmt(d.upcomingEvents.length);
   $("#lys-meetings").textContent = fmt(d.recentMeetings.length);
 
-  $("#lys-funding-amount").textContent = d.fundingAmount;
-  $("#lys-funding-label").textContent = d.fundingLabel;
-  $("#lys-countdown").textContent = countdown("2026-05-01");
+  const fundingCard = document.querySelector(".funding-card");
+  if (d.fundingAmount) {
+    $("#lys-funding-amount").textContent = d.fundingAmount;
+    $("#lys-funding-label").textContent = d.fundingLabel || "";
+    $("#lys-countdown").textContent = countdown("2026-05-01");
+    if (fundingCard) fundingCard.classList.remove("hidden");
+  } else if (fundingCard) {
+    fundingCard.classList.add("hidden");
+  }
 
   const evEl = $("#lys-events-list");
   let calItems = [];
@@ -117,7 +172,7 @@ function gmailCell(p) {
 
 function actionCell(p) {
   if (!p.email) return "";
-  return `<button class="btn ghost btn-sm" data-draft="${esc(p.email)}">Draft</button>`;
+  return `<button class="btn ghost btn-sm" data-draft="${esc(p.email)}" data-icon="mail-plus">Draft</button>`;
 }
 
 function renderPartners() {
@@ -146,9 +201,9 @@ function renderPartners() {
         <td colspan="4">
           <div class="partner-detail-grid">
             <div><span class="dtl-lbl">Category</span><span class="category-chip">${esc(p.category)}</span></div>
-            <div><span class="dtl-lbl">Contact</span>${esc(p.contact || "—")}${p.role ? ` · <span class="item-sub">${esc(p.role)}</span>` : ""}</div>
-            <div><span class="dtl-lbl">Risk</span><span class="${risk}">${esc((p.scandals || "—"))}</span></div>
-            <div><span class="dtl-lbl">Email</span>${esc(p.email || "—")}</div>
+            <div><span class="dtl-lbl">Contact</span>${esc(p.contact || "·")}${p.role ? ` · <span class="item-sub">${esc(p.role)}</span>` : ""}</div>
+            <div><span class="dtl-lbl">Risk</span><span class="${risk}">${esc((p.scandals || "·"))}</span></div>
+            <div><span class="dtl-lbl">Email</span>${esc(p.email || "·")}</div>
             ${p.note ? `<div class="partner-note"><span class="dtl-lbl">Note</span>${esc(p.note)}</div>` : ""}
           </div>
         </td>
@@ -163,28 +218,33 @@ function renderPartners() {
       ${detailsHtml}
     `;
   }).join("");
+  renderIcons(tbody);
 }
 
 async function syncLtbbGmail() {
   const btn = $("#ltbb-sync-btn");
   const hint = $("#ltbb-sync-hint");
+  const originalHtml = btn.innerHTML;
   btn.disabled = true;
-  btn.textContent = "Syncing…";
+  btn.innerHTML = `${iconSvg("refresh")}Syncing…`;
   try {
     const r = await fetch("/api/ltbb/gmail-sync");
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     LTBB_SYNC = {};
     for (const row of d.results || []) LTBB_SYNC[row.email] = row;
+    const total = Object.keys(LTBB_SYNC).length;
     const sentCount = Object.values(LTBB_SYNC).filter((x) => x.hasSent).length;
     const replyCount = Object.values(LTBB_SYNC).filter((x) => x.hasReceived).length;
-    hint.textContent = `Synced ${Object.keys(LTBB_SYNC).length} partners · ${sentCount} contacted · ${replyCount} replies`;
+    hint.textContent = `Synced ${total} partners · ${sentCount} contacted · ${replyCount} replies`;
+    toast({ title: "Gmail sync complete", sub: `${total} partners · ${sentCount} contacted · ${replyCount} replies`, kind: "ok" });
     renderPartners();
   } catch (e) {
     hint.textContent = `Sync failed: ${e.message}`;
+    toast({ title: "Gmail sync failed", sub: e.message, kind: "err" });
   } finally {
     btn.disabled = false;
-    btn.textContent = "Sync with Gmail";
+    btn.innerHTML = originalHtml;
   }
 }
 
@@ -197,9 +257,15 @@ async function createDraftFor(email) {
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
-    alert(`Draft created for ${email}\nSubject: ${d.subject}\nOpen Gmail → Drafts to review & send.`);
+    toast({
+      title: `Draft created for ${email}`,
+      sub: `Subject: ${d.subject || "(no subject)"} · open Gmail Drafts to review`,
+      kind: "ok",
+      icon: "mail-plus",
+      ttl: 6000,
+    });
   } catch (e) {
-    alert(`Draft failed: ${e.message}`);
+    toast({ title: "Draft failed", sub: `${email}: ${e.message}`, kind: "err" });
   }
 }
 
@@ -292,7 +358,12 @@ function applyStatus(acc, pillId, hintId, btnId) {
     if (hint) hint.textContent = `Authorized · ${acc.scopes?.length || 0} scopes`;
     if (btnId) {
       const btn = $(btnId);
-      if (btn) { btn.textContent = "Re-authorize"; btn.classList.remove("primary"); btn.classList.add("ghost"); }
+      if (btn) {
+        btn.innerHTML = `${iconSvg("key")}Re-authorize`;
+        btn.setAttribute("data-icon", "key");
+        btn.classList.remove("primary");
+        btn.classList.add("ghost");
+      }
     }
   } else if (acc.hasCredentials) {
     pill.textContent = "not authorized";
@@ -421,7 +492,7 @@ async function loadAIW() {
 
   const sessions = d.sessions || [];
   $("#aiw-sessions").innerHTML = sessions.length ? sessions.map((s) => `
-    <li><span>#${s.num} — ${esc(s.date)}</span><span class="item-sub">${esc(s.topic || "")}</span></li>
+    <li><span>#${s.num} · ${esc(s.date)}</span><span class="item-sub">${esc(s.topic || "")}</span></li>
   `).join("") : `<li class="empty">no sessions parsed</li>`;
 
   const members = d.members || [];
@@ -435,10 +506,111 @@ async function loadAIW() {
   wrapCollapsible($("#aiw-members-list"), 6);
 }
 
+// --- LPC ---
+async function loadLPC() {
+  const d = await fetch("/api/lpc").then((r) => r.json());
+
+  $("#lpc-members").textContent = fmt(d.memberCount);
+  $("#lpc-events-count").textContent = fmt(d.summary?.events?.length || 0);
+  $("#lpc-topics-count").textContent = fmt(d.summary?.topics?.length || 0);
+
+  const wa = d.whatsapp || {};
+  const statusPill = $("#lpc-wa-status");
+  const hint = $("#lpc-wa-hint");
+  statusPill.className = "pill";
+  if (wa.connected) {
+    statusPill.textContent = wa.group || "connected";
+    statusPill.classList.add("ok");
+    if (wa.lastSync) hint.textContent = `Last sync: ${wa.lastSync}`;
+  } else if (wa.error) {
+    statusPill.textContent = "offline";
+    statusPill.classList.add("warn");
+    hint.textContent = wa.error;
+  } else {
+    statusPill.textContent = "unknown";
+    statusPill.classList.add("off");
+  }
+
+  const events = d.summary?.events || [];
+  $("#lpc-events-pill").textContent = events.length ? `${events.length}` : "none";
+  $("#lpc-events").innerHTML = events.length ? events.map((e) => `
+    <li>
+      <span>${esc(e.title)}</span>
+      <span class="item-sub">${esc(e.date || "")}${e.details ? ` · ${esc(e.details)}` : ""}</span>
+    </li>
+  `).join("") : `<li class="empty">no summary yet — click Refresh AI summary</li>`;
+
+  const topics = d.summary?.topics || [];
+  $("#lpc-topics-pill").textContent = topics.length ? `${topics.length}` : "none";
+  $("#lpc-topics").innerHTML = topics.length ? topics.map((t) => `
+    <li>
+      <span class="topic">${esc(t.title)}</span>
+      <span class="item-sub">${esc(t.summary)}</span>
+    </li>
+  `).join("") : `<li class="empty">no summary yet — click Refresh AI summary</li>`;
+
+  const msgs = wa.messages || [];
+  $("#lpc-wa-count").textContent = `${msgs.length} msgs`;
+  $("#lpc-wa-messages").innerHTML = msgs.length ? msgs.slice().reverse().map((m) => {
+    const when = new Date(m.ts * 1000).toLocaleString("en-GB", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    return `<li>
+      <span class="topic">${esc(m.name || m.from)}</span>
+      <span class="item-sub">${esc(m.text).slice(0, 200)} · ${when}</span>
+    </li>`;
+  }).join("") : `<li class="empty">no messages yet (daemon not running or empty group)</li>`;
+
+  const members = d.members || [];
+  $("#lpc-members-list").innerHTML = members.length ? members.map((m) => `
+    <li><span>${esc(m.name)}</span><span class="item-sub">${esc(m.role)}</span></li>
+  `).join("") : `<li class="empty">no members yet (daemon not running)</li>`;
+
+  const sHint = $("#lpc-summary-hint");
+  if (d.summary?.refreshedAt) {
+    const t = new Date(d.summary.refreshedAt).toLocaleString();
+    sHint.textContent = `Summary refreshed ${t} · ${d.summary.model || ""}`;
+  } else {
+    sHint.textContent = "No AI summary yet.";
+  }
+
+  wrapCollapsible($("#lpc-events"), 5);
+  wrapCollapsible($("#lpc-topics"), 5);
+  wrapCollapsible($("#lpc-wa-messages"), 5);
+  wrapCollapsible($("#lpc-members-list"), 8);
+}
+
+async function refreshLPCSummary() {
+  const btn = $("#lpc-refresh-summary");
+  const hint = $("#lpc-summary-hint");
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `${iconSvg("refresh")}Summarizing…`;
+  try {
+    const r = await fetch("/api/lpc/summarize", { method: "POST" });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || `status ${r.status}`);
+    hint.textContent = `Summary refreshed · ${d.events?.length || 0} events · ${d.topics?.length || 0} topics`;
+    toast({ title: "LPC summary refreshed", sub: `${d.events?.length || 0} events · ${d.topics?.length || 0} topics`, kind: "ok" });
+    await loadLPC();
+  } catch (e) {
+    hint.textContent = `Refresh failed: ${e.message}`;
+    toast({ title: "LPC summary failed", sub: e.message, kind: "err" });
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target?.id === "lpc-refresh-summary") return refreshLPCSummary();
+});
+
 // --- boot ---
+renderIcons();
 loadGoogleStatus();
 loadLatestMeeting();
-loadLYS().catch((e) => console.error("LYS load:", e));
-loadLTBB().catch((e) => console.error("LTBB load:", e));
-loadAIW().catch((e) => console.error("AIW load:", e));
+loadLYS().catch((e) => { console.error("LYS load:", e); toast({ title: "LYS failed to load", sub: e.message, kind: "err" }); });
+loadLTBB().catch((e) => { console.error("LTBB load:", e); toast({ title: "LTBB failed to load", sub: e.message, kind: "err" }); });
+loadAIW().catch((e) => { console.error("AIW load:", e); toast({ title: "AI Workshop failed to load", sub: e.message, kind: "err" }); });
+loadLPC().catch((e) => { console.error("LPC load:", e); toast({ title: "LPC failed to load", sub: e.message, kind: "err" }); });
 setInterval(() => loadAIW().catch(() => {}), 5000);
+setInterval(() => loadLPC().catch(() => {}), 10000);

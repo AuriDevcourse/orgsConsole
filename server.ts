@@ -7,7 +7,8 @@ process.on("uncaughtException", (err) => {
   console.error("[uncaughtException]", err.message);
 });
 
-import { getLYS, getLTBB, getAIWorkshop } from "./data";
+import { getLYS, getLTBB, getAIWorkshop, getLPC } from "./data";
+import { writeFile } from "node:fs/promises";
 import {
   ACCOUNTS,
   ACCOUNT_LABELS,
@@ -31,6 +32,90 @@ const REDIRECT_URI = `${PUBLIC_HOST}/oauth/callback`;
 
 const json = (data: unknown, status = 200) =>
   Response.json(data, { status });
+
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
+
+const extractJsonBlock = (text: string): string => {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]+?)```/);
+  if (fenced) return fenced[1].trim();
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
+  if (first !== -1 && last > first) return text.slice(first, last + 1);
+  return text.trim();
+};
+
+const summarizeLPC = async () => {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) {
+    return { error: "ANTHROPIC_API_KEY not set", model: ANTHROPIC_MODEL };
+  }
+  const lpc = await getLPC();
+  const messages = lpc.whatsapp.messages ?? [];
+  if (!messages.length) {
+    return { error: "no messages to summarize", model: ANTHROPIC_MODEL };
+  }
+
+  const transcript = messages
+    .map((m) => {
+      const d = new Date(m.ts * 1000).toISOString().slice(0, 16).replace("T", " ");
+      return `[${d}] ${m.name || m.from}: ${m.text}`;
+    })
+    .join("\n");
+
+  const system = `You read WhatsApp group chat transcripts for "Lithuania Professionals in Copenhagen" and extract structured info.
+Today is ${new Date().toISOString().slice(0, 10)}.
+Return STRICT JSON only, no prose, no markdown fences, matching this schema:
+{
+  "events": [ { "title": string, "date"?: "YYYY-MM-DD or free-text", "details"?: string } ],
+  "topics": [ { "title": string, "summary": string } ]
+}
+- "events": upcoming meetups, socials, visits, gatherings explicitly mentioned. Skip past events. Max 8.
+- "topics": recurring or notable discussion threads (job referrals, housing, bureaucracy tips, etc.). Max 6.
+- Prefer Lithuanian/English phrasing as used in the chat. Keep titles short (<60 chars).`;
+
+  const body = {
+    model: ANTHROPIC_MODEL,
+    max_tokens: 2048,
+    temperature: 0.2,
+    system,
+    messages: [
+      { role: "user", content: `Here is the recent transcript (newest last):\n\n${transcript}` },
+    ],
+  };
+
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!r.ok) {
+    const errText = await r.text();
+    return { error: `Anthropic ${r.status}: ${errText.slice(0, 300)}`, model: ANTHROPIC_MODEL };
+  }
+
+  const data = await r.json() as { content?: { type: string; text?: string }[] };
+  const content = data.content?.find((c) => c.type === "text")?.text ?? "";
+  let parsed: { events?: unknown[]; topics?: unknown[] } = {};
+  try {
+    parsed = JSON.parse(extractJsonBlock(content));
+  } catch {
+    return { error: "model did not return JSON", raw: content.slice(0, 400), model: ANTHROPIC_MODEL };
+  }
+
+  const summary = {
+    refreshedAt: new Date().toISOString(),
+    model: ANTHROPIC_MODEL,
+    events: Array.isArray(parsed.events) ? parsed.events : [],
+    topics: Array.isArray(parsed.topics) ? parsed.topics : [],
+  };
+  await writeFile("./data/lpc-summary.json", JSON.stringify(summary, null, 2));
+  return summary;
+};
 
 const isAccount = (s: string): s is Account => ACCOUNTS.includes(s as Account);
 
@@ -73,6 +158,10 @@ const route = async (req: Request): Promise<Response> => {
     if (url.pathname === "/api/lys") return json(await getLYS());
     if (url.pathname === "/api/ltbb") return json(await getLTBB());
     if (url.pathname === "/api/aiworkshop") return json(await getAIWorkshop());
+    if (url.pathname === "/api/lpc") return json(await getLPC());
+    if (url.pathname === "/api/lpc/summarize" && req.method === "POST") {
+      return json(await summarizeLPC());
+    }
     if (url.pathname === "/api/aiworkshop/qr") {
       return new Response(file("./data/whatsapp-qr.png"));
     }

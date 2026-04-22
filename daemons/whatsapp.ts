@@ -13,9 +13,30 @@ import pino from "pino";
 const AUTH_DIR = "./credentials/whatsapp";
 const DATA_PATH = "./data/whatsapp.json";
 const QR_PNG_PATH = "./data/whatsapp-qr.png";
-const GROUP_NAME_FRAGMENT = (process.env.WA_GROUP || "ai workshops").toLowerCase();
-const MAX_MESSAGES = 500;
 const CTRL_PORT = Number(process.env.WA_CTRL_PORT) || 8787;
+const MAX_MESSAGES = 500;
+
+type GroupConfig = { id: string; fragment: string };
+
+// Default groups. Override with WA_GROUPS="id:fragment,id:fragment" (case-insensitive match on group subject).
+const DEFAULT_GROUPS: GroupConfig[] = [
+  { id: "aiw", fragment: "ai workshops" },
+  { id: "lpc", fragment: "lpc chatas" },
+];
+
+const parseGroupsEnv = (raw: string | undefined): GroupConfig[] => {
+  if (!raw) return DEFAULT_GROUPS;
+  const out: GroupConfig[] = [];
+  for (const part of raw.split(",")) {
+    const [id, ...rest] = part.split(":");
+    const fragment = rest.join(":").trim();
+    if (!id || !fragment) continue;
+    out.push({ id: id.trim(), fragment: fragment.toLowerCase() });
+  }
+  return out.length ? out : DEFAULT_GROUPS;
+};
+
+const GROUPS = parseGroupsEnv(process.env.WA_GROUPS);
 
 type StoredMessage = {
   id: string;
@@ -26,22 +47,62 @@ type StoredMessage = {
   fromMe: boolean;
 };
 
-type Store = {
-  connected: boolean;
-  group?: string;
-  groupJid?: string;
+type Participant = { jid: string; name?: string; admin?: "admin" | "superadmin" | null };
+
+type GroupState = {
+  fragment: string;
+  jid?: string;
+  name?: string;
+  participants?: Participant[];
+  messages: StoredMessage[];
   lastSync?: string;
   error?: string;
+};
+
+type Store = {
+  connected: boolean;
   qrPending?: boolean;
   qrUpdatedAt?: string;
-  messages: StoredMessage[];
+  lastSync?: string;
+  error?: string;
+  groups: Record<string, GroupState>;
+};
+
+const emptyStore = (): Store => {
+  const groups: Record<string, GroupState> = {};
+  for (const g of GROUPS) groups[g.id] = { fragment: g.fragment, messages: [] };
+  return { connected: false, groups };
 };
 
 const loadStore = async (): Promise<Store> => {
   try {
-    return JSON.parse(await readFile(DATA_PATH, "utf-8")) as Store;
+    const raw = JSON.parse(await readFile(DATA_PATH, "utf-8")) as Partial<Store> & {
+      group?: string;
+      groupJid?: string;
+      messages?: StoredMessage[];
+    };
+    const base = emptyStore();
+    base.connected = !!raw.connected;
+    base.qrPending = raw.qrPending;
+    base.qrUpdatedAt = raw.qrUpdatedAt;
+    base.lastSync = raw.lastSync;
+    base.error = raw.error;
+    // Migrate legacy flat format → groups.aiw
+    if (!raw.groups && raw.messages && base.groups.aiw) {
+      base.groups.aiw.jid = raw.groupJid;
+      base.groups.aiw.name = raw.group;
+      base.groups.aiw.messages = raw.messages;
+    }
+    if (raw.groups) {
+      for (const [id, gs] of Object.entries(raw.groups)) {
+        if (base.groups[id]) {
+          base.groups[id] = { ...base.groups[id], ...gs, fragment: base.groups[id].fragment };
+        }
+      }
+    }
+    return base;
   } catch {
-    return { connected: false, messages: [] };
+    return emptyStore();
   }
 };
 
@@ -51,15 +112,14 @@ const saveStore = async (s: Store) => {
 };
 
 const extractText = (msg: unknown): string => {
-  const m = msg as Record<string, unknown> | null;
-  if (!m) return "";
-  const any = m as any;
+  const any = (msg ?? {}) as Record<string, unknown>;
+  const a = any as any;
   return (
-    any.conversation ??
-    any.extendedTextMessage?.text ??
-    any.imageMessage?.caption ??
-    any.videoMessage?.caption ??
-    any.documentMessage?.caption ??
+    a.conversation ??
+    a.extendedTextMessage?.text ??
+    a.imageMessage?.caption ??
+    a.videoMessage?.caption ??
+    a.documentMessage?.caption ??
     ""
   );
 };
@@ -67,13 +127,31 @@ const extractText = (msg: unknown): string => {
 let store: Store;
 let sock: WASocket | null = null;
 
-const resolveGroup = async (s: WASocket): Promise<{ jid: string; name: string } | null> => {
-  const groups = await s.groupFetchAllParticipating();
-  for (const [jid, meta] of Object.entries(groups)) {
-    const name = (meta as { subject?: string }).subject ?? "";
-    if (name.toLowerCase().includes(GROUP_NAME_FRAGMENT)) {
-      return { jid, name };
-    }
+const resolveGroups = async (s: WASocket) => {
+  const all = await s.groupFetchAllParticipating();
+  const matches: { id: string; jid: string; name: string; meta: any }[] = [];
+  for (const g of GROUPS) {
+    const hit = Object.entries(all).find(([, meta]) => {
+      const name = (meta as { subject?: string }).subject ?? "";
+      return name.toLowerCase().includes(g.fragment);
+    });
+    if (hit) matches.push({ id: g.id, jid: hit[0], name: (hit[1] as any).subject, meta: hit[1] });
+  }
+  return matches;
+};
+
+const updateParticipantsFromMeta = (gs: GroupState, meta: any) => {
+  const ps: Participant[] = (meta?.participants ?? []).map((p: any) => ({
+    jid: p.id ?? p.jid ?? "",
+    name: p.name ?? p.notify ?? undefined,
+    admin: (p.admin ?? null) as Participant["admin"],
+  }));
+  if (ps.length) gs.participants = ps;
+};
+
+const jidToGroupId = (jid: string): string | null => {
+  for (const [id, gs] of Object.entries(store.groups)) {
+    if (gs.jid === jid) return id;
   }
   return null;
 };
@@ -108,19 +186,27 @@ const start = async () => {
     if (connection === "open") {
       console.log("[whatsapp] connected");
       store.qrPending = false;
-      const g = await resolveGroup(sock!);
-      if (!g) {
-        store.connected = true;
-        store.error = `no group matched "${GROUP_NAME_FRAGMENT}"`;
-        console.error("[whatsapp]", store.error);
-      } else {
-        store.connected = true;
-        store.group = g.name;
-        store.groupJid = g.jid;
-        store.error = undefined;
-        store.lastSync = new Date().toISOString();
-        console.log(`[whatsapp] watching group: ${g.name} (${g.jid})`);
+      store.connected = true;
+      store.error = undefined;
+      const matches = await resolveGroups(sock!);
+      const matchedIds = new Set(matches.map((m) => m.id));
+      for (const m of matches) {
+        const gs = store.groups[m.id];
+        if (!gs) continue;
+        gs.jid = m.jid;
+        gs.name = m.name;
+        gs.error = undefined;
+        gs.lastSync = new Date().toISOString();
+        updateParticipantsFromMeta(gs, m.meta);
+        console.log(`[whatsapp] watching "${m.name}" as ${m.id} (${m.jid})`);
       }
+      for (const g of GROUPS) {
+        if (!matchedIds.has(g.id) && store.groups[g.id]) {
+          store.groups[g.id].error = `no group matched "${g.fragment}"`;
+          console.warn(`[whatsapp] ${store.groups[g.id].error}`);
+        }
+      }
+      store.lastSync = new Date().toISOString();
       await saveStore(store);
     }
     if (connection === "close") {
@@ -134,15 +220,31 @@ const start = async () => {
     }
   });
 
+  sock.ev.on("groups.update", async (updates) => {
+    let dirty = false;
+    for (const upd of updates) {
+      if (!upd.id) continue;
+      const gid = jidToGroupId(upd.id);
+      if (!gid) continue;
+      const gs = store.groups[gid];
+      if (upd.subject) gs.name = upd.subject;
+      dirty = true;
+    }
+    if (dirty) await saveStore(store);
+  });
+
   sock.ev.on("messages.upsert", async ({ messages }) => {
-    if (!store.groupJid) return;
     let dirty = false;
     for (const m of messages) {
-      if (m.key.remoteJid !== store.groupJid) continue;
+      const jid = m.key.remoteJid;
+      if (!jid) continue;
+      const gid = jidToGroupId(jid);
+      if (!gid) continue;
+      const gs = store.groups[gid];
       const text = extractText(m.message).trim();
       if (!text) continue;
       const participant = m.key.participant ?? m.key.remoteJid ?? "";
-      store.messages.push({
+      gs.messages.push({
         id: m.key.id ?? String(Date.now()),
         from: participant,
         name: m.pushName ?? undefined,
@@ -150,12 +252,13 @@ const start = async () => {
         ts: Number(m.messageTimestamp ?? Math.floor(Date.now() / 1000)),
         fromMe: !!m.key.fromMe,
       });
+      if (gs.messages.length > MAX_MESSAGES) {
+        gs.messages = gs.messages.slice(-MAX_MESSAGES);
+      }
+      gs.lastSync = new Date().toISOString();
       dirty = true;
     }
     if (dirty) {
-      if (store.messages.length > MAX_MESSAGES) {
-        store.messages = store.messages.slice(-MAX_MESSAGES);
-      }
       store.lastSync = new Date().toISOString();
       await saveStore(store);
     }
@@ -172,26 +275,49 @@ Bun.serve({
   hostname: "127.0.0.1",
   async fetch(req) {
     const url = new URL(req.url);
+
+    // POST /send  body: { text, group? } — default group = first configured (aiw)
     if (url.pathname === "/send" && req.method === "POST") {
-      if (!sock || !store?.connected || !store.groupJid) {
-        return Response.json({ error: "whatsapp not connected" }, { status: 503 });
-      }
-      const body = (await req.json().catch(() => null)) as { text?: string } | null;
+      const body = (await req.json().catch(() => null)) as { text?: string; group?: string } | null;
       const text = body?.text?.trim();
+      const groupId = body?.group ?? GROUPS[0]?.id;
       if (!text) return Response.json({ error: "missing text" }, { status: 400 });
+      if (!groupId || !store?.groups[groupId]) {
+        return Response.json({ error: `unknown group "${groupId}"` }, { status: 400 });
+      }
+      const gs = store.groups[groupId];
+      if (!sock || !store.connected || !gs.jid) {
+        return Response.json({ error: "whatsapp not connected for that group" }, { status: 503 });
+      }
       try {
-        const res = await sock.sendMessage(store.groupJid, { text });
+        const res = await sock.sendMessage(gs.jid, { text });
         return Response.json({
           ok: true,
           id: res?.key?.id,
-          group: store.group,
+          group: gs.name,
+          groupId,
           ts: new Date().toISOString(),
         });
       } catch (e) {
         return Response.json({ error: (e as Error).message }, { status: 500 });
       }
     }
+
+    // GET /status — quick peek at what the daemon sees
+    if (url.pathname === "/status") {
+      return Response.json({
+        connected: store?.connected ?? false,
+        groups: Object.fromEntries(
+          Object.entries(store?.groups ?? {}).map(([id, gs]) => [
+            id,
+            { name: gs.name, jid: gs.jid, msgCount: gs.messages.length, error: gs.error, lastSync: gs.lastSync },
+          ]),
+        ),
+      });
+    }
+
     return new Response("not found", { status: 404 });
   },
 });
 console.log(`[whatsapp] control server on http://127.0.0.1:${CTRL_PORT}`);
+console.log(`[whatsapp] watching groups: ${GROUPS.map((g) => `${g.id}="${g.fragment}"`).join(", ")}`);

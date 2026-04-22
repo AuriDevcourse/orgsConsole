@@ -1,11 +1,73 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-const VAULT = "/home/auri/vault";
+const VAULT = process.env.VAULT || "/home/auri/vault";
 const LYS_DIR = join(VAULT, "LYS");
 const LTBB_DIR = join(VAULT, "Personal/LT Big Brother");
 const AIW_DIR = join(VAULT, "AI Workshop");
-const WHATSAPP_DATA = "/home/auri/projects/orgs-bot/data/whatsapp.json";
+const WHATSAPP_DATA = "./data/whatsapp.json";
+const LPC_SUMMARY = "./data/lpc-summary.json";
+
+type WAStoredMessage = { id: string; from: string; name?: string; text: string; ts: number; fromMe: boolean };
+type WAParticipant = { jid: string; name?: string; admin?: "admin" | "superadmin" | null };
+type WAGroupState = {
+  fragment?: string;
+  jid?: string;
+  name?: string;
+  participants?: WAParticipant[];
+  messages: WAStoredMessage[];
+  lastSync?: string;
+  error?: string;
+};
+type WAStore = {
+  connected: boolean;
+  qrPending?: boolean;
+  qrUpdatedAt?: string;
+  lastSync?: string;
+  error?: string;
+  groups: Record<string, WAGroupState>;
+  // legacy fields (pre-multi-group daemon)
+  group?: string;
+  groupJid?: string;
+  messages?: WAStoredMessage[];
+};
+
+const emptyGroup = (): WAGroupState => ({ messages: [] });
+
+const loadWAStore = async (): Promise<WAStore> => {
+  try {
+    const raw = JSON.parse(await readFile(WHATSAPP_DATA, "utf-8")) as Partial<WAStore>;
+    return {
+      connected: !!raw.connected,
+      qrPending: raw.qrPending,
+      qrUpdatedAt: raw.qrUpdatedAt,
+      lastSync: raw.lastSync,
+      error: raw.error,
+      groups: raw.groups ?? {},
+      group: raw.group,
+      groupJid: raw.groupJid,
+      messages: raw.messages,
+    };
+  } catch {
+    return { connected: false, groups: {} };
+  }
+};
+
+const readGroup = (store: WAStore, id: string): WAGroupState => {
+  const g = store.groups?.[id];
+  if (g) return g;
+  // Legacy shim: if reading "aiw" and only top-level messages exist, synthesize.
+  if (id === "aiw" && store.messages) {
+    return {
+      jid: store.groupJid,
+      name: store.group,
+      messages: store.messages,
+      lastSync: store.lastSync,
+      error: store.error,
+    };
+  }
+  return emptyGroup();
+};
 
 export type Task = { text: string; done: boolean; owner?: string; due?: string };
 export type Partner = {
@@ -205,17 +267,20 @@ export async function getAIWorkshop() {
     qrUpdatedAt?: string;
   } = { connected: false, messages: [] };
   try {
-    const raw = await readFile(WHATSAPP_DATA, "utf-8");
-    const parsed = JSON.parse(raw);
+    const store = await loadWAStore();
+    const g = readGroup(store, "aiw");
     whatsapp = {
-      connected: !!parsed.connected,
-      group: parsed.group,
-      lastSync: parsed.lastSync,
-      messages: (parsed.messages ?? []).slice(-50),
-      error: parsed.error,
-      qrPending: !!parsed.qrPending,
-      qrUpdatedAt: parsed.qrUpdatedAt,
+      connected: !!store.connected,
+      group: g.name,
+      lastSync: g.lastSync ?? store.lastSync,
+      messages: (g.messages ?? []).slice(-50),
+      error: g.error ?? store.error,
+      qrPending: !!store.qrPending,
+      qrUpdatedAt: store.qrUpdatedAt,
     };
+    if (!g.messages?.length && !g.jid && !whatsapp.error) {
+      whatsapp.error = "daemon not running (no ./data/whatsapp.json yet)";
+    }
   } catch {
     whatsapp.error = "daemon not running (no ./data/whatsapp.json yet)";
   }
@@ -278,5 +343,59 @@ export async function getLTBB() {
     hasHunter: true,
     hasFavro: true,
     onePagerReady: false,
+  };
+}
+
+// ---- LPC (Lithuania Professionals in Copenhagen) ----
+
+type LPCSummary = {
+  refreshedAt: string;
+  model?: string;
+  events: { title: string; date?: string; details?: string }[];
+  topics: { title: string; summary: string }[];
+};
+
+const loadLPCSummary = async (): Promise<LPCSummary | null> => {
+  try {
+    return JSON.parse(await readFile(LPC_SUMMARY, "utf-8")) as LPCSummary;
+  } catch {
+    return null;
+  }
+};
+
+export async function getLPC() {
+  const store = await loadWAStore();
+  const g = readGroup(store, "lpc");
+  const summary = await loadLPCSummary();
+
+  const participants = g.participants ?? [];
+  const members = participants.map((p) => ({
+    name: p.name || p.jid.split("@")[0],
+    jid: p.jid,
+    role: p.admin === "superadmin" ? "Owner" : p.admin === "admin" ? "Admin" : "Member",
+  }));
+
+  const messages = (g.messages ?? []).slice(-100);
+
+  let whatsappError: string | undefined = g.error ?? store.error;
+  if (!messages.length && !g.jid && !whatsappError) {
+    whatsappError = "daemon not running (no ./data/whatsapp.json yet)";
+  }
+
+  return {
+    name: "LPC",
+    nameLocal: "Lithuania Professionals in Copenhagen",
+    whatsapp: {
+      connected: !!store.connected && !!g.jid,
+      group: g.name,
+      lastSync: g.lastSync ?? store.lastSync,
+      error: whatsappError,
+      qrPending: !!store.qrPending,
+      qrUpdatedAt: store.qrUpdatedAt,
+      messages,
+    },
+    memberCount: members.length,
+    members,
+    summary: summary ?? null,
   };
 }

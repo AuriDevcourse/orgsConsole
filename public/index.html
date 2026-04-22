@@ -3,8 +3,18 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Orgs Dashboard — Auri</title>
+<title>Orgs Console · Auri</title>
 <link rel="stylesheet" href="/static/style.css" />
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client"
+  }
+}
+</script>
 </head>
 <body>
 <header class="topbar">
@@ -27,6 +37,11 @@
       <span class="tab-accent aiw"></span>
       <span>AI Workshop</span>
       <span class="tab-sub">Copenhagen community</span>
+    </button>
+    <button class="tab" data-tab="lpc" role="tab">
+      <span class="tab-accent lpc"></span>
+      <span>LPC</span>
+      <span class="tab-sub">Lithuania Professionals in Copenhagen</span>
     </button>
   </nav>
   <div class="meta">
@@ -58,8 +73,8 @@
         <span class="pill" id="lys-google-status">checking…</span>
       </div>
       <div class="action-row">
-        <a class="btn ghost" href="/oauth/start/lys" target="_blank">Re-authorize</a>
-        <a class="btn ghost" id="lys-latest-doc-link" href="#" target="_blank">Open latest meeting</a>
+        <a class="btn ghost" href="/oauth/start/lys" target="_blank" data-icon="key">Re-authorize</a>
+        <a class="btn ghost" id="lys-latest-doc-link" href="#" target="_blank" data-icon="external-link">Open latest meeting</a>
       </div>
       <p class="hint" id="lys-google-hint"></p>
     </section>
@@ -124,8 +139,8 @@
         <span class="pill" id="auri-google-status">checking…</span>
       </div>
       <div class="action-row">
-        <a class="btn primary" href="/oauth/start/auri" target="_blank" id="auri-authorize-btn"><span>🔐</span> Authorize</a>
-        <button class="btn ghost" id="ltbb-sync-btn">Sync with Gmail</button>
+        <a class="btn primary" href="/oauth/start/auri" target="_blank" id="auri-authorize-btn" data-icon="shield-check">Authorize</a>
+        <button class="btn ghost" id="ltbb-sync-btn" data-icon="refresh">Sync with Gmail</button>
       </div>
       <p class="hint" id="ltbb-sync-hint"></p>
       <p class="hint" id="auri-google-hint"></p>
@@ -191,14 +206,14 @@
         <span class="pill" id="aiw-wa-status">checking…</span>
       </div>
       <div class="action-row">
-        <a class="btn ghost" href="https://luma.com/7s5iruxh?tk=M3vLXU" target="_blank">Open Luma</a>
-        <button class="btn ghost" id="aiw-compose-toggle">Post announcement</button>
+        <a class="btn ghost" href="https://luma.com/7s5iruxh?tk=M3vLXU" target="_blank" data-icon="external-link">Open Luma</a>
+        <button class="btn ghost" id="aiw-compose-toggle" data-icon="megaphone">Post announcement</button>
       </div>
       <div id="aiw-compose" class="compose hidden">
         <textarea id="aiw-compose-text" placeholder="Write an announcement to the AI Workshops group…" rows="3"></textarea>
         <div class="compose-row">
           <span class="hint" id="aiw-compose-hint">Sends to <b id="aiw-compose-group">…</b> as you.</span>
-          <button class="btn primary" id="aiw-compose-send">Send</button>
+          <button class="btn primary" id="aiw-compose-send" data-icon="send">Send</button>
         </div>
       </div>
       <div id="aiw-qr-wrap" class="hidden" style="margin-top:12px;text-align:center;">
@@ -235,8 +250,80 @@
     </section>
 
   </section>
+
+  <!-- LPC TAB -->
+  <section class="panel-grid hidden" id="tab-lpc">
+
+    <section class="card hero lpc-hero">
+      <div class="hero-label">LPC</div>
+      <h1>Lithuania Professionals in Copenhagen</h1>
+      <p class="subtitle">Community chat · signal extracted from WhatsApp</p>
+      <div class="hero-role">Member</div>
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-num" id="lpc-members">–</div><div class="stat-lbl">members</div></div>
+        <div class="stat"><div class="stat-num" id="lpc-events-count">–</div><div class="stat-lbl">upcoming events</div></div>
+        <div class="stat"><div class="stat-num" id="lpc-topics-count">–</div><div class="stat-lbl">topics</div></div>
+      </div>
+    </section>
+
+    <section class="card action-card">
+      <div class="card-head">
+        <h2>WhatsApp group</h2>
+        <span class="pill" id="lpc-wa-status">checking…</span>
+      </div>
+      <div class="action-row">
+        <button class="btn primary" id="lpc-refresh-summary" data-icon="refresh">Refresh AI summary</button>
+      </div>
+      <p class="hint" id="lpc-wa-hint"></p>
+      <p class="hint" id="lpc-summary-hint"></p>
+    </section>
+
+    <section class="card span-2">
+      <div class="card-head">
+        <h2>Upcoming events</h2>
+        <span class="pill" id="lpc-events-pill">–</span>
+      </div>
+      <ul class="list" id="lpc-events"><li class="empty">no summary yet — click Refresh AI summary</li></ul>
+    </section>
+
+    <section class="card span-2">
+      <div class="card-head">
+        <h2>Important topics</h2>
+        <span class="pill" id="lpc-topics-pill">–</span>
+      </div>
+      <ul class="list" id="lpc-topics"><li class="empty">no summary yet — click Refresh AI summary</li></ul>
+    </section>
+
+    <section class="card span-2">
+      <div class="card-head">
+        <h2>Recent WhatsApp activity</h2>
+        <span class="pill" id="lpc-wa-count">–</span>
+      </div>
+      <ul class="list compact" id="lpc-wa-messages"><li class="empty">loading…</li></ul>
+    </section>
+
+    <section class="card span-2">
+      <div class="card-head"><h2>Members</h2></div>
+      <ul class="list compact" id="lpc-members-list"><li class="empty">loading…</li></ul>
+    </section>
+
+  </section>
 </main>
 
+<div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+<div id="agentation-root"></div>
+
 <script src="/static/app.js"></script>
+<script type="module">
+  // Only load Agentation when served from localhost (dev / SSH tunnel).
+  if (["localhost", "127.0.0.1"].includes(location.hostname)) {
+    const React    = await import("https://esm.sh/react@18.3.1");
+    const ReactDOM = await import("https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1");
+    const { Agentation } = await import("https://esm.sh/agentation@3.0.2?deps=react@18.3.1,react-dom@18.3.1&external=react,react-dom");
+    ReactDOM.createRoot(document.getElementById("agentation-root"))
+      .render(React.createElement(Agentation, { endpoint: "http://localhost:4747" }));
+  }
+</script>
 </body>
 </html>
