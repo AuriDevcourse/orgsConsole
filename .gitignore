@@ -1,0 +1,9 @@
+node_modules/
+bun.lock
+credentials/
+data/
+client_secret*.json
+token*.json
+*.log
+.env
+.env.local

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Orgs Dashboard — Auri</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo-dot"></span>
+    <span class="brand-text">Orgs Console</span>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="lys" role="tab">
+      <span class="tab-accent lys"></span>
+      <span>LYS</span>
+      <span class="tab-sub">Lietuvių Jaunimo Sąjunga</span>
+    </button>
+    <button class="tab" data-tab="ltbb" role="tab">
+      <span class="tab-accent ltbb"></span>
+      <span>LT Big Brother</span>
+      <span class="tab-sub">Partner Outreach</span>
+    </button>
+    <button class="tab" data-tab="aiw" role="tab">
+      <span class="tab-accent aiw"></span>
+      <span>AI Workshop</span>
+      <span class="tab-sub">Copenhagen community</span>
+    </button>
+  </nav>
+  <div class="meta">
+    <span id="now"></span>
+    <span class="dot"></span>
+    <span class="user">auri@openclaw</span>
+  </div>
+</header>
+
+<main>
+  <!-- LYS TAB -->
+  <section class="panel-grid" id="tab-lys">
+
+    <section class="card hero lys-hero">
+      <div class="hero-label">LYS</div>
+      <h1 id="lys-name">Lithuanian Youth Society</h1>
+      <p class="subtitle" id="lys-name-local"></p>
+      <div class="hero-role">President</div>
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-num" id="lys-board-count">–</div><div class="stat-lbl">board members</div></div>
+        <div class="stat"><div class="stat-num" id="lys-events">–</div><div class="stat-lbl">upcoming events</div></div>
+        <div class="stat"><div class="stat-num" id="lys-meetings">–</div><div class="stat-lbl">recent meetings</div></div>
+      </div>
+    </section>
+
+    <section class="card action-card lys-action">
+      <div class="card-head">
+        <h2>Google access · LYS</h2>
+        <span class="pill" id="lys-google-status">checking…</span>
+      </div>
+      <div class="action-row">
+        <a class="btn ghost" href="/oauth/start/lys" target="_blank">Re-authorize</a>
+        <a class="btn ghost" id="lys-latest-doc-link" href="#" target="_blank">Open latest meeting</a>
+      </div>
+      <p class="hint" id="lys-google-hint"></p>
+    </section>
+
+    <section class="card funding-card hidden">
+      <div class="card-head">
+        <h2>Funding deadline</h2>
+        <span class="pill urgent" id="lys-funding-pill">deadline</span>
+      </div>
+      <div class="funding-amount" id="lys-funding-amount">–</div>
+      <div class="funding-label" id="lys-funding-label">loading…</div>
+      <div class="countdown" id="lys-countdown">–</div>
+    </section>
+
+    <section class="card span-2">
+      <div class="card-head"><h2>Upcoming events</h2></div>
+      <ul class="list" id="lys-events-list"><li class="empty">loading…</li></ul>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Recent meetings</h2></div>
+      <ul class="list" id="lys-meetings-list"><li class="empty">loading…</li></ul>
+    </section>
+
+    <section class="card span-3">
+      <div class="card-head">
+        <h2>Latest board meeting</h2>
+        <span class="pill" id="lys-meeting-date">–</span>
+      </div>
+      <div class="meeting-grid two" id="lys-meeting-grid">
+        <div class="meeting-col">
+          <h3>What happened <span class="count" id="lys-past-count">0</span></h3>
+          <ul class="list" id="lys-past-tasks"><li class="empty">loading…</li></ul>
+        </div>
+        <div class="meeting-col">
+          <h3>Next up <span class="count" id="lys-new-count">0</span></h3>
+          <ul class="list" id="lys-new-tasks"><li class="empty">loading…</li></ul>
+        </div>
+      </div>
+    </section>
+
+  </section>
+
+  <!-- LTBB TAB -->
+  <section class="panel-grid hidden" id="tab-ltbb">
+
+    <section class="card hero ltbb-hero">
+      <div class="hero-label">LT Big Brother</div>
+      <h1 id="ltbb-name">LT Big Brother</h1>
+      <p class="subtitle" id="ltbb-name-local"></p>
+      <div class="hero-role">Partnership Coordinator</div>
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-num" id="ltbb-total">–</div><div class="stat-lbl">partners tracked</div></div>
+        <div class="stat"><div class="stat-num" id="ltbb-pending">–</div><div class="stat-lbl">not contacted</div></div>
+        <div class="stat"><div class="stat-num" id="ltbb-contacted">–</div><div class="stat-lbl">in progress</div></div>
+      </div>
+    </section>
+
+    <section class="card action-card ltbb-action">
+      <div class="card-head">
+        <h2>Google access · Auri</h2>
+        <span class="pill" id="auri-google-status">checking…</span>
+      </div>
+      <div class="action-row">
+        <a class="btn primary" href="/oauth/start/auri" target="_blank" id="auri-authorize-btn"><span>🔐</span> Authorize</a>
+        <button class="btn ghost" id="ltbb-sync-btn">Sync with Gmail</button>
+      </div>
+      <p class="hint" id="ltbb-sync-hint"></p>
+      <p class="hint" id="auri-google-hint"></p>
+    </section>
+
+    <section class="card span-3">
+      <div class="card-head">
+        <h2>Partner pipeline</h2>
+        <div class="filters">
+          <button class="chip active" data-filter="all">All</button>
+          <button class="chip" data-filter="pending">Not contacted</button>
+          <button class="chip" data-filter="contacted">Contacted</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="partners">
+          <thead>
+            <tr>
+              <th>Company</th>
+              <th>Status</th>
+              <th>Gmail</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ltbb-partners"><tr><td colspan="4" class="empty">loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card span-2">
+      <div class="card-head"><h2>Email template</h2></div>
+      <details class="template-details">
+        <summary>View full template</summary>
+        <pre class="template" id="ltbb-template">loading…</pre>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>By category</h2></div>
+      <ul class="bars" id="ltbb-categories"><li class="empty">loading…</li></ul>
+    </section>
+
+  </section>
+
+  <!-- AI WORKSHOP TAB -->
+  <section class="panel-grid hidden" id="tab-aiw">
+
+    <section class="card hero aiw-hero">
+      <div class="hero-label">AI Workshop</div>
+      <h1>AI Workshop · Copenhagen</h1>
+      <p class="subtitle">Build with AI. Show what you learned.</p>
+      <div class="hero-role">Organizer</div>
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-num" id="aiw-members">–</div><div class="stat-lbl">members</div></div>
+        <div class="stat"><div class="stat-num" id="aiw-past">–</div><div class="stat-lbl">past sessions</div></div>
+        <div class="stat"><div class="stat-num" id="aiw-next">–</div><div class="stat-lbl">next session</div></div>
+      </div>
+    </section>
+
+    <section class="card action-card">
+      <div class="card-head">
+        <h2>WhatsApp group</h2>
+        <span class="pill" id="aiw-wa-status">checking…</span>
+      </div>
+      <div class="action-row">
+        <a class="btn ghost" href="https://luma.com/7s5iruxh?tk=M3vLXU" target="_blank">Open Luma</a>
+        <button class="btn ghost" id="aiw-compose-toggle">Post announcement</button>
+      </div>
+      <div id="aiw-compose" class="compose hidden">
+        <textarea id="aiw-compose-text" placeholder="Write an announcement to the AI Workshops group…" rows="3"></textarea>
+        <div class="compose-row">
+          <span class="hint" id="aiw-compose-hint">Sends to <b id="aiw-compose-group">…</b> as you.</span>
+          <button class="btn primary" id="aiw-compose-send">Send</button>
+        </div>
+      </div>
+      <div id="aiw-qr-wrap" class="hidden" style="margin-top:12px;text-align:center;">
+        <img id="aiw-qr-img" src="/api/aiworkshop/qr" alt="WhatsApp QR" style="width:240px;height:240px;background:#fff;padding:8px;border-radius:8px;" />
+        <p class="hint">WhatsApp → Settings → Linked Devices → Link a device</p>
+      </div>
+      <p class="hint" id="aiw-wa-hint"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Action items</h2>
+        <span class="pill" id="aiw-actions-count">–</span>
+      </div>
+      <ul class="task-list" id="aiw-actions"><li class="empty">loading…</li></ul>
+    </section>
+
+    <section class="card span-2">
+      <div class="card-head">
+        <h2>Recent WhatsApp activity</h2>
+        <span class="pill" id="aiw-wa-count">–</span>
+      </div>
+      <ul class="list compact" id="aiw-wa-messages"><li class="empty">loading…</li></ul>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Sessions</h2></div>
+      <ul class="list" id="aiw-sessions"><li class="empty">loading…</li></ul>
+    </section>
+
+    <section class="card span-2">
+      <div class="card-head"><h2>Members</h2></div>
+      <ul class="list compact" id="aiw-members-list"><li class="empty">loading…</li></ul>
+    </section>
+
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
