@@ -24,6 +24,7 @@ import {
 } from "./google";
 import { getLatestMeeting, listMeetings, parseMeeting } from "./lys-drive";
 import { syncPartners, createDraft } from "./ltbb-gmail";
+import { enqueueAction, listActions, type ProposeInput } from "./ltbb-actions";
 import { readFile } from "node:fs/promises";
 
 const PORT = Number(process.env.PORT) || 8000;
@@ -205,6 +206,37 @@ const route = async (req: Request): Promise<Response> => {
       );
       const draft = await createDraft(client, partner, templateMd);
       return json(draft);
+    }
+
+    if (url.pathname === "/api/ltbb/actions/propose" && req.method === "POST") {
+      const body = (await req.json().catch(() => null)) as Partial<ProposeInput> | null;
+      if (!body) return json({ error: "invalid json" }, 400);
+      const required: (keyof ProposeInput)[] = ["kind", "partnerEmail", "draftId", "subject"];
+      for (const k of required) {
+        if (!body[k]) return json({ error: `missing ${k}` }, 400);
+      }
+      const action = await enqueueAction({
+        kind: body.kind!,
+        project: body.project ?? "event_2026_05_05",
+        partnerEmail: body.partnerEmail!,
+        partnerCompany: body.partnerCompany ?? "",
+        draftId: body.draftId!,
+        subject: body.subject!,
+        bodyPreview: body.bodyPreview ?? "",
+        reasoning: body.reasoning ?? "",
+        proposedBy: body.proposedBy ?? "unknown",
+      });
+      return json(action, 201);
+    }
+
+    if (url.pathname === "/api/ltbb/actions/pending") {
+      const actions = await listActions({ status: "pending" });
+      return json({ actions });
+    }
+
+    if (url.pathname === "/api/ltbb/actions") {
+      const actions = await listActions();
+      return json({ actions });
     }
     if (url.pathname === "/api/summary") {
       const [lys, ltbb] = await Promise.all([getLYS(), getLTBB()]);

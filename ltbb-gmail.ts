@@ -86,7 +86,7 @@ export const createDraft = async (
   templateMd: string,
   senderName = "Aurimas",
   programLead = "Neda",
-): Promise<{ draftId: string; threadId?: string; subject: string }> => {
+): Promise<{ draftId: string; threadId?: string; subject: string; bodyPreview: string }> => {
   if (!partner.email) throw new Error("partner has no email");
   const { gmail } = getServices(client);
   const { subject, body } = extractTemplate(templateMd);
@@ -107,5 +107,21 @@ export const createDraft = async (
     draftId: r.data.id ?? "",
     threadId: r.data.message?.threadId ?? undefined,
     subject: filledSubject,
+    bodyPreview: filledBody.slice(0, 280),
+  };
+};
+
+export const sendDraft = async (
+  client: OAuth2Client,
+  draftId: string,
+): Promise<{ messageId: string; threadId: string }> => {
+  const { gmail } = getServices(client);
+  const r = await gmail.users.drafts.send({
+    userId: "me",
+    requestBody: { id: draftId },
+  });
+  return {
+    messageId: r.data.id ?? "",
+    threadId: r.data.threadId ?? "",
   };
 };

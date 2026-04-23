@@ -1,0 +1,17 @@
+[Unit]
+Description=orgsConsole LTBB approval daemon (Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/auri/projects/orgs-bot
+EnvironmentFile=/home/auri/projects/orgs-bot/.env
+ExecStart=/home/auri/.bun/bin/bun run daemons/ltbb-approvals.ts
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
