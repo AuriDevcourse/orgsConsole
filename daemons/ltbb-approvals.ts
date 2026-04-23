@@ -16,6 +16,7 @@ if (!TOKEN) {
 
 const PUBLIC_HOST = process.env.PUBLIC_HOST || `http://localhost:${process.env.PORT || 8000}`;
 const REDIRECT_URI = `${PUBLIC_HOST}/oauth/callback`;
+const SAFE_MODE = process.env.SAFE_MODE === "1";
 const POLL_TIMEOUT_S = 30;
 const ENQUEUE_CHECK_MS = 5_000;
 const STATE_PATH = "./data/ltbb-approvals.json";
@@ -117,6 +118,21 @@ const editMsg = async (msgId: number, html: string) => {
 };
 
 const handleApprove = async (a: Action) => {
+  if (SAFE_MODE) {
+    await updateAction(a.id, {
+      status: "sent_simulated",
+      decidedAt: new Date().toISOString(),
+      result: { messageId: "SIMULATED", threadId: "SIMULATED" },
+    });
+    if (a.telegramMsgId) {
+      await editMsg(
+        a.telegramMsgId,
+        `<b>Approved (SAFE_MODE · not actually sent)</b>\nTo: ${esc(a.partnerCompany || a.partnerEmail)}\nSubject: ${esc(a.subject)}`,
+      );
+    }
+    console.log(`[ltbb-approvals] approved ${a.id} (SAFE_MODE · no Gmail send)`);
+    return;
+  }
   const client = await getAuthedClient("auri", REDIRECT_URI);
   if (!client) {
     await updateAction(a.id, {
@@ -277,7 +293,7 @@ const announceLoop = async () => {
 
 const main = async () => {
   console.log(
-    `[ltbb-approvals] started — chat=${CHAT_ID ?? "(unset, /chatid only)"} host=${PUBLIC_HOST}`,
+    `[ltbb-approvals] started — chat=${CHAT_ID ?? "(unset, /chatid only)"} host=${PUBLIC_HOST} safe_mode=${SAFE_MODE}`,
   );
   await Promise.all([announceLoop(), pollUpdates()]);
 };

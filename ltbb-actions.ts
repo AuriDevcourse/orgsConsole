@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 const STORE_PATH = "./data/ltbb-actions.json";
 
 export type ActionKind = "send_draft";
-export type ActionStatus = "pending" | "sent" | "rejected" | "failed";
+export type ActionStatus = "pending" | "sent" | "sent_simulated" | "rejected" | "failed";
 
 export type Action = {
   id: string;
