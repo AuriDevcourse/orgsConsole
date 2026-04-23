@@ -1,0 +1,9 @@
+[Unit]
+Description=Fire LTBB morning briefing at 08:00 Copenhagen
+
+[Timer]
+OnCalendar=*-*-* 08:00:00 Europe/Copenhagen
+Persistent=true
+
+[Install]
+WantedBy=timers.target

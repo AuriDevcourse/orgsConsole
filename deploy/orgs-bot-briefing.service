@@ -1,0 +1,11 @@
+[Unit]
+Description=orgsConsole LTBB morning briefing (oneshot)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/auri/projects/orgs-bot
+EnvironmentFile=/home/auri/projects/orgs-bot/.env
+ExecStart=/home/auri/.bun/bin/bun run deploy/briefing.ts
+StandardOutput=journal
+StandardError=journal
