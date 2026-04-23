@@ -49,6 +49,9 @@ const tg = async (method: string, body: Record<string, unknown>) => {
   return data.result;
 };
 
+const esc = (s: string): string =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 const approvalKeyboard = (actionId: string) => ({
   inline_keyboard: [[
     { text: "Approve & Send", callback_data: `approve:${actionId}` },
@@ -58,20 +61,20 @@ const approvalKeyboard = (actionId: string) => ({
 
 const formatActionMessage = (a: Action): string => {
   const lines = [
-    `*LTBB outreach proposal*`,
-    `Project: \`${a.project}\``,
-    `To: *${a.partnerCompany || a.partnerEmail}* <${a.partnerEmail}>`,
-    `Subject: ${a.subject}`,
-    `Proposed by: ${a.proposedBy}`,
+    `<b>LTBB outreach proposal</b>`,
+    `Project: <code>${esc(a.project)}</code>`,
+    `To: <b>${esc(a.partnerCompany || a.partnerEmail)}</b> &lt;${esc(a.partnerEmail)}&gt;`,
+    `Subject: ${esc(a.subject)}`,
+    `Proposed by: ${esc(a.proposedBy)}`,
     ``,
     `━━━`,
-    a.bodyPreview || "(no preview)",
+    esc(a.bodyPreview || "(no preview)"),
     `━━━`,
   ];
   if (a.reasoning) {
-    lines.push(``, `_Reasoning:_ ${a.reasoning}`);
+    lines.push(``, `<i>Reasoning:</i> ${esc(a.reasoning)}`);
   }
-  lines.push(``, `_Edit the draft in Gmail Drafts before approving if needed._`);
+  lines.push(``, `<i>Edit the draft in Gmail Drafts before approving if needed.</i>`);
   return lines.join("\n");
 };
 
@@ -84,7 +87,7 @@ const announceAction = async (a: Action) => {
     const res = (await tg("sendMessage", {
       chat_id: CHAT_ID,
       text: formatActionMessage(a),
-      parse_mode: "Markdown",
+      parse_mode: "HTML",
       reply_markup: approvalKeyboard(a.id),
     })) as { message_id: number };
     await updateAction(a.id, { telegramMsgId: res.message_id });
@@ -102,13 +105,13 @@ const scanAndAnnounce = async () => {
   }
 };
 
-const editMsg = async (msgId: number, text: string) => {
+const editMsg = async (msgId: number, html: string) => {
   if (!CHAT_ID) return;
   await tg("editMessageText", {
     chat_id: CHAT_ID,
     message_id: msgId,
-    text,
-    parse_mode: "Markdown",
+    text: html,
+    parse_mode: "HTML",
     reply_markup: { inline_keyboard: [] },
   }).catch(() => {});
 };
@@ -136,7 +139,7 @@ const handleApprove = async (a: Action) => {
     if (a.telegramMsgId) {
       await editMsg(
         a.telegramMsgId,
-        `*Sent* to ${a.partnerCompany || a.partnerEmail}\nSubject: ${a.subject}`,
+        `<b>Sent</b> to ${esc(a.partnerCompany || a.partnerEmail)}\nSubject: ${esc(a.subject)}`,
       );
     }
     console.log(`[ltbb-approvals] sent ${a.id} → ${a.partnerEmail}`);
@@ -148,7 +151,7 @@ const handleApprove = async (a: Action) => {
       result: { error: msg },
     });
     if (a.telegramMsgId) {
-      await editMsg(a.telegramMsgId, `Send failed: ${msg}`);
+      await editMsg(a.telegramMsgId, `Send failed: ${esc(msg)}`);
     }
   }
 };
@@ -161,7 +164,7 @@ const handleReject = async (a: Action) => {
   if (a.telegramMsgId) {
     await editMsg(
       a.telegramMsgId,
-      `*Rejected* — ${a.partnerCompany || a.partnerEmail}\nSubject: ${a.subject}`,
+      `<b>Rejected</b> · ${esc(a.partnerCompany || a.partnerEmail)}\nSubject: ${esc(a.subject)}`,
     );
   }
   console.log(`[ltbb-approvals] rejected ${a.id}`);
@@ -175,7 +178,7 @@ const handleCallback = async (cb: any) => {
   const action = await getAction(actionId);
   if (!action) {
     if (cb.message?.message_id) {
-      await editMsg(cb.message.message_id, `_Action ${actionId} not found._`);
+      await editMsg(cb.message.message_id, `<i>Action ${esc(actionId)} not found.</i>`);
     }
     return;
   }
@@ -183,7 +186,7 @@ const handleCallback = async (cb: any) => {
     if (cb.message?.message_id) {
       await editMsg(
         cb.message.message_id,
-        `_Already ${action.status}. No action taken._`,
+        `<i>Already ${esc(action.status)}. No action taken.</i>`,
       );
     }
     return;
@@ -200,11 +203,11 @@ const handleTextMessage = async (msg: any) => {
   const chatId = msg.chat?.id;
   if (!text || !chatId) return;
 
-  if (text === "/chatid") {
+  if (text === "/chatid" || text.startsWith("/chatid@")) {
     await tg("sendMessage", {
       chat_id: chatId,
-      text: `Chat ID: \`${chatId}\`\nSet TELEGRAM_LTBB_CHAT_ID=${chatId} and restart the daemon.`,
-      parse_mode: "Markdown",
+      text: `Chat ID: <code>${chatId}</code>\nSet TELEGRAM_LTBB_CHAT_ID=${chatId} and restart the daemon.`,
+      parse_mode: "HTML",
     });
     return;
   }
